@@ -22,6 +22,23 @@ export default function TripsScreen() {
     const [isActive, setIsActive] = useState(true);
     const [uploading, setUploading] = useState(false);
 
+    // Timeline Step Form states
+    const [timelineSteps, setTimelineSteps] = useState([]);
+    const [editingStepId, setEditingStepId] = useState(null);
+    const [stepType, setStepType] = useState('walk');
+    const [stepOrder, setStepOrder] = useState('');
+    const [stepDep, setStepDep] = useState('');
+    const [stepArr, setStepArr] = useState('');
+
+    const [stepTitleCs, setStepTitleCs] = useState('');
+    const [stepTextCs, setStepTextCs] = useState('');
+    
+    const [stepTitleEn, setStepTitleEn] = useState('');
+    const [stepTextEn, setStepTextEn] = useState('');
+
+    const [stepTitleIt, setStepTitleIt] = useState('');
+    const [stepTextIt, setStepTextIt] = useState('');
+
     // Multilingual details
     const [titleCs, setTitleCs] = useState('');
     const [descCs, setDescCs] = useState('');
@@ -149,6 +166,11 @@ export default function TripsScreen() {
         setTitleIt(tr.it?.title || '');
         setDescIt(tr.it?.description || '');
 
+        // Load timeline steps
+        const sortedSteps = [...(trip.steps || [])].sort((a, b) => a.step_order - b.step_order);
+        setTimelineSteps(sortedSteps);
+        setStepOrder((sortedSteps.length + 1).toString());
+
         setIsEditing(true);
     };
 
@@ -164,30 +186,9 @@ export default function TripsScreen() {
                     onPress: async () => {
                         setLoading(true);
                         try {
-                            // We can send delete request
-                            await apiPost(`/api/trips/${id}/delete`); // Since router maps POST /api/trips/{id}/delete, or we can use our DELETE endpoints
-                            // Wait, does ApiController handle DELETE? Yes: DELETE /api/trips/{id}
-                            // Wait, does our router in public/index.php allow delete request?
-                            // Let's check public/index.php line 61:
-                            // We didn't map DELETE requests in our simple router because php custom router works mostly on GET/POST.
-                            // But wait! In public/index.php, did we add delete routes?
-                            // Let's check index.php:
-                            // We added:
-                            // `$router->post('/api/comments/{id}/delete', ...);`
-                            // Ah! What about trips and posts delete?
-                            // In public/index.php, did we map `api/trips/{id}/delete`?
-                            // Let's check: we mapped:
-                            // `$router->post('/api/comments/{id}/delete', ...);`
-                            // But for trips we did:
-                            // `$router->post('/api/trips/{id}', ...)` (updateTrip)
-                            // We didn't add delete routes for trips and posts via POST in index.php!
-                            // Oh! Let's check `ApiController::deleteTrip` and `ApiController::deletePost`.
-                            // They are defined as methods. But did we register routes for them?
-                            // No, they are not registered!
-                            // Let's verify `public/index.php` again.
-                            // Ah! Let's register POST `/api/trips/{id}/delete` and POST `/api/posts/{id}/delete` in `public/index.php` and `ApiController.php`!
-                            // That way, we can call POST to delete them easily from React Native!
-                            // Let's do that!
+                            await apiPost(`/api/trips/${id}/delete`);
+                            Alert.alert('Úspěch', 'Cesta byla smazána.');
+                            fetchTrips();
                         } catch (e) {
                             Alert.alert('Chyba', 'Cestu se nepodařilo smazat: ' + e.message);
                             setLoading(false);
@@ -198,6 +199,160 @@ export default function TripsScreen() {
         );
     };
 
+    const resetStepForm = () => {
+        setEditingStepId(null);
+        setStepType('walk');
+        setStepOrder((timelineSteps.length + 1).toString());
+        setStepDep('');
+        setStepArr('');
+        setStepTitleCs(''); setStepTextCs('');
+        setStepTitleEn(''); setStepTextEn('');
+        setStepTitleIt(''); setStepTextIt('');
+    };
+
+    const handleEditStep = (step) => {
+        setEditingStepId(step.id);
+        setStepType(step.transport_type);
+        setStepOrder(step.step_order.toString());
+        setStepDep(step.departure_time || '');
+        setStepArr(step.arrival_time || '');
+
+        const tr = step.translations || {};
+        setStepTitleCs(tr.cs?.title || '');
+        setStepTextCs(tr.cs?.text || '');
+
+        setStepTitleEn(tr.en?.title || '');
+        setStepTextEn(tr.en?.text || '');
+
+        setStepTitleIt(tr.it?.title || '');
+        setStepTextIt(tr.it?.text || '');
+    };
+
+    const handleSaveStep = async () => {
+        if (!stepTitleCs) {
+            Alert.alert('Chyba', 'Název kroku v češtině je povinný.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const body = {
+                step_type: stepType,
+                step_order: parseInt(stepOrder) || 0,
+                step_dep: stepDep,
+                step_arr: stepArr,
+                step_title_cs: stepTitleCs,
+                step_text_cs: stepTextCs,
+                step_title_en: stepTitleEn,
+                step_text_en: stepTextEn,
+                step_title_it: stepTitleIt,
+                step_text_it: stepTextIt,
+            };
+
+            if (editingStepId) {
+                await apiPost(`/api/trips/${editingTripId}/timeline/${editingStepId}`, body);
+                Alert.alert('Úspěch', 'Krok časové osy byl upraven.');
+            } else {
+                await apiPost(`/api/trips/${editingTripId}/timeline`, body);
+                Alert.alert('Úspěch', 'Krok časové osy byl přidán.');
+            }
+
+            const updatedTrips = await apiGet('/api/trips');
+            setTrips(updatedTrips);
+            const currentTrip = updatedTrips.find(t => t.id === editingTripId);
+            let sortedSteps = [];
+            if (currentTrip) {
+                sortedSteps = [...(currentTrip.steps || [])].sort((a, b) => a.step_order - b.step_order);
+                setTimelineSteps(sortedSteps);
+            }
+            
+            setEditingStepId(null);
+            setStepType('walk');
+            setStepOrder((sortedSteps.length + 1).toString());
+            setStepDep('');
+            setStepArr('');
+            setStepTitleCs(''); setStepTextCs('');
+            setStepTitleEn(''); setStepTextEn('');
+            setStepTitleIt(''); setStepTextIt('');
+        } catch (e) {
+            Alert.alert('Chyba', 'Uložení kroku selhalo: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteStep = (stepId) => {
+        Alert.alert(
+            'Smazat krok',
+            'Opravdu chcete tento krok smazat z časové osy?',
+            [
+                { text: 'Zrušit', style: 'cancel' },
+                {
+                    text: 'Smazat',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setLoading(true);
+                        try {
+                            await apiPost(`/api/trips/${editingTripId}/timeline/${stepId}/delete`);
+                            
+                            const updatedTrips = await apiGet('/api/trips');
+                            setTrips(updatedTrips);
+                            const currentTrip = updatedTrips.find(t => t.id === editingTripId);
+                            let sortedSteps = [];
+                            if (currentTrip) {
+                                sortedSteps = [...(currentTrip.steps || [])].sort((a, b) => a.step_order - b.step_order);
+                                setTimelineSteps(sortedSteps);
+                            }
+                            
+                            setEditingStepId(null);
+                            setStepType('walk');
+                            setStepOrder((sortedSteps.length + 1).toString());
+                            setStepDep('');
+                            setStepArr('');
+                            setStepTitleCs(''); setStepTextCs('');
+                            setStepTitleEn(''); setStepTextEn('');
+                            setStepTitleIt(''); setStepTextIt('');
+
+                            Alert.alert('Úspěch', 'Krok byl smazán.');
+                        } catch (e) {
+                            Alert.alert('Chyba', 'Smazání kroku selhalo: ' + e.message);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleMoveStep = async (index, direction) => {
+        const newSteps = [...timelineSteps];
+        const swapIndex = direction === 'up' ? index - 1 : index + 1;
+        
+        if (swapIndex < 0 || swapIndex >= newSteps.length) return;
+
+        const temp = newSteps[index];
+        newSteps[index] = newSteps[swapIndex];
+        newSteps[swapIndex] = temp;
+
+        newSteps.forEach((step, idx) => {
+            step.step_order = idx + 1;
+        });
+
+        setTimelineSteps(newSteps);
+
+        try {
+            const order = newSteps.map(s => s.id);
+            await apiPost(`/api/trips/${editingTripId}/timeline/reorder`, { order });
+            
+            const updatedTrips = await apiGet('/api/trips');
+            setTrips(updatedTrips);
+        } catch (e) {
+            Alert.alert('Chyba', 'Změna pořadí se neuložila na server: ' + e.message);
+            fetchTrips();
+        }
+    };
+
     const resetForm = () => {
         setStartDate('');
         setEndDate('');
@@ -206,6 +361,8 @@ export default function TripsScreen() {
         setTitleCs(''); setDescCs('');
         setTitleEn(''); setDescEn('');
         setTitleIt(''); setDescIt('');
+        setTimelineSteps([]);
+        setEditingStepId(null);
     };
 
     if (loading && !refreshing) {
@@ -305,6 +462,171 @@ export default function TripsScreen() {
                         </View>
                     )}
                 </View>
+
+                {/* Timeline Section */}
+                {editingTripId && (
+                    <View style={{ marginTop: 10 }}>
+                        <Text style={[styles.sectionTitle, { fontSize: 18, marginTop: 10, borderBottomWidth: 1, borderBottomColor: '#E8E3D9', paddingBottom: 6 }]}>
+                            📍 Časová osa (Timeline)
+                        </Text>
+                        
+                        {/* Step Form Card */}
+                        <View style={styles.card}>
+                            <Text style={styles.sectionTitle}>
+                                {editingStepId ? 'Upravit krok časové osy' : 'Přidat nový krok'}
+                            </Text>
+
+                            <Text style={styles.label}>Typ dopravy / ikona</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                value={stepType} 
+                                onChangeText={setStepType} 
+                                placeholder="Např. flight, train, bus, walk, hotel, car, taxi" 
+                            />
+
+                            <Text style={styles.label}>Čas odjezdu / Od (Departure)</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                value={stepDep} 
+                                onChangeText={setStepDep} 
+                                placeholder="Např. 10:15 nebo Den 1" 
+                            />
+
+                            <Text style={styles.label}>Čas příjezdu / Do (Arrival)</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                value={stepArr} 
+                                onChangeText={setStepArr} 
+                                placeholder="Např. 12:00" 
+                            />
+
+                            {/* Translations inside step form based on activeTab */}
+                            {activeTab === 'cs' && (
+                                <View>
+                                    <Text style={styles.label}>Název kroku (CZ) *</Text>
+                                    <TextInput 
+                                        style={styles.input} 
+                                        value={stepTitleCs} 
+                                        onChangeText={setStepTitleCs} 
+                                        placeholder="Let z Prahy" 
+                                    />
+
+                                    <Text style={styles.label}>Podrobnosti (CZ)</Text>
+                                    <TextInput 
+                                        style={[styles.input, styles.textArea]} 
+                                        value={stepTextCs} 
+                                        onChangeText={setStepTextCs} 
+                                        placeholder="Ryanair, letadlo..." 
+                                        multiline 
+                                    />
+                                </View>
+                            )}
+
+                            {activeTab === 'en' && (
+                                <View>
+                                    <Text style={styles.label}>Název kroku (EN)</Text>
+                                    <TextInput 
+                                        style={styles.input} 
+                                        value={stepTitleEn} 
+                                        onChangeText={setStepTitleEn} 
+                                        placeholder="Flight from Prague" 
+                                    />
+
+                                    <Text style={styles.label}>Podrobnosti (EN)</Text>
+                                    <TextInput 
+                                        style={[styles.input, styles.textArea]} 
+                                        value={stepTextEn} 
+                                        onChangeText={setStepTextEn} 
+                                        placeholder="Details..." 
+                                        multiline 
+                                    />
+                                </View>
+                            )}
+
+                            {activeTab === 'it' && (
+                                <View>
+                                    <Text style={styles.label}>Název kroku (IT)</Text>
+                                    <TextInput 
+                                        style={styles.input} 
+                                        value={stepTitleIt} 
+                                        onChangeText={setStepTitleIt} 
+                                        placeholder="Volo da Praga" 
+                                    />
+
+                                    <Text style={styles.label}>Podrobnosti (IT)</Text>
+                                    <TextInput 
+                                        style={[styles.input, styles.textArea]} 
+                                        value={stepTextIt} 
+                                        onChangeText={setStepTextIt} 
+                                        placeholder="Dettagli..." 
+                                        multiline 
+                                    />
+                                </View>
+                            )}
+
+                            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: '#E05A36', marginTop: 10 }]} onPress={handleSaveStep}>
+                                <Text style={styles.saveBtnText}>{editingStepId ? 'Uložit změny kroku' : 'Přidat krok na osu'}</Text>
+                            </TouchableOpacity>
+
+                            {editingStepId && (
+                                <TouchableOpacity style={[styles.cancelBtn, { marginTop: 8, alignItems: 'center', justifyContent: 'center' }]} onPress={resetStepForm}>
+                                    <Text style={styles.cancelBtnText}>Zrušit úpravu</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {/* Steps List */}
+                        <Text style={styles.sectionTitle}>Aktuální kroky na ose ({timelineSteps.length})</Text>
+                        {timelineSteps.length === 0 ? (
+                            <Text style={styles.emptyText}>Časová osa nemá žádné kroky.</Text>
+                        ) : (
+                            timelineSteps.map((st, idx) => (
+                                <View key={st.id} style={styles.stepCard}>
+                                    <View style={styles.stepCardHeader}>
+                                        <View style={{ flex: 1, marginRight: 8 }}>
+                                            <Text style={styles.stepTitle}>
+                                                Krok #{idx + 1} - {st.transport_type}
+                                            </Text>
+                                            <Text style={styles.stepName}>
+                                                {st.translations?.cs?.title || 'Bez názvu'}
+                                                {st.departure_time ? ` (${st.departure_time} ➔ ${st.arrival_time || '?'})` : ''}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.reorderActions}>
+                                            <TouchableOpacity 
+                                                style={[styles.arrowBtn, idx === 0 && styles.disabledBtn]} 
+                                                disabled={idx === 0} 
+                                                onPress={() => handleMoveStep(idx, 'up')}
+                                            >
+                                                <Text style={styles.arrowText}>▲</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={[styles.arrowBtn, idx === timelineSteps.length - 1 && styles.disabledBtn]} 
+                                                disabled={idx === timelineSteps.length - 1} 
+                                                onPress={() => handleMoveStep(idx, 'down')}
+                                            >
+                                                <Text style={styles.arrowText}>▼</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+
+                                    {st.translations?.cs?.text ? (
+                                        <Text style={styles.stepText}>{st.translations.cs.text}</Text>
+                                    ) : null}
+
+                                    <View style={[styles.cardActions, { marginTop: 8 }]}>
+                                        <TouchableOpacity style={[styles.editBtn, { paddingVertical: 5, paddingHorizontal: 10 }]} onPress={() => handleEditStep(st)}>
+                                            <Text style={[styles.editBtnText, { fontSize: 12 }]}>Upravit</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.deleteBtn, { paddingVertical: 5, paddingHorizontal: 10 }]} onPress={() => handleDeleteStep(st.id)}>
+                                            <Text style={[styles.deleteBtnText, { fontSize: 12 }]}>Smazat</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                    </View>
+                )}
 
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                     <Text style={styles.saveBtnText}>Uložit cestu</Text>
@@ -616,5 +938,56 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         textAlign: 'center',
         paddingVertical: 20,
+    },
+    stepCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 10,
+        borderColor: '#E8E3D9',
+        borderWidth: 1,
+    },
+    stepCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    stepTitle: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: '#E05A36',
+    },
+    stepName: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#112233',
+        marginTop: 2,
+    },
+    stepText: {
+        fontSize: 12,
+        color: '#8c7a6b',
+        marginTop: 4,
+    },
+    reorderActions: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    arrowBtn: {
+        backgroundColor: '#F9F6F0',
+        borderColor: '#E8E3D9',
+        borderWidth: 1,
+        width: 32,
+        height: 32,
+        borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    arrowText: {
+        fontSize: 12,
+        color: '#112233',
+        fontWeight: 'bold',
+    },
+    disabledBtn: {
+        opacity: 0.3,
     }
 });
