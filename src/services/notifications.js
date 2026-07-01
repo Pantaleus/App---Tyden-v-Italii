@@ -43,7 +43,7 @@ export async function registerForPushNotificationsAsync() {
         // Register on our PHP backend
         await apiPost('/api/register-push', { push_token: token });
     } catch (error) {
-        console.error('Error registering push token', error);
+        console.log('Info: Push notifikace nejsou nakonfigurovány (chybí projectId v app.json pro Expo Go).');
     }
 
     return token;

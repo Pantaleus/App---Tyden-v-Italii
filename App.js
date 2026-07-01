@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, StatusBar, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, StatusBar, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { initApi, getApiToken } from './src/services/api';
 import { registerForPushNotificationsAsync } from './src/services/notifications';
 
